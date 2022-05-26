@@ -91,6 +91,7 @@ class Receiver:
             self.publish('adder_queue', key, result)
 
             result = get_id_and_url(msg)
+            key = str(hash(chunk_id) % DISPATCHERS)
             self.publish('post_join_dispatch', key, result)
         else:
             for i in range(ADDERS):

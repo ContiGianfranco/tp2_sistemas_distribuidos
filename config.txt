@@ -1,7 +1,7 @@
 number_of_rows:1000
 number_of_adders:3
-number_of_post_dispatchers:3
+number_of_post_dispatchers:2
 number_of_student_comments:3
 number_of_joiners:3
-number_of_join_avgs:3
-number_of_sentiment_adders:3
+number_of_join_avgs:2
+number_of_sentiment_adders:2

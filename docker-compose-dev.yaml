@@ -14,7 +14,7 @@ services:
       - PYTHONUNBUFFERED=1
       - PYTHONHASHSEED=0
       - ADDERS=3
-      - DISPATCHERS=3
+      - DISPATCHERS=2
     restart: on-failure
     links:
       - rabbitmq
@@ -43,7 +43,7 @@ services:
       - PYTHONUNBUFFERED=1
       - PYTHONHASHSEED=0
       - NUMBER_OF_ROW=1000
-      - AVG_JOINER=3
+      - AVG_JOINER=2
     volumes:
       - ./CSV/:/CSV/
     restart: on-failure
@@ -102,9 +102,9 @@ services:
       - PYTHONUNBUFFERED=1
       - PYTHONHASHSEED=0
       - JOINER_NUM=0
-      - SENT_ADDER=3
-      - AVG_JOINER=3
-      - POST_DISPATCHERS=3
+      - SENT_ADDER=2
+      - AVG_JOINER=2
+      - POST_DISPATCHERS=2
       - STUDENT_COMM=3
       - NUMBER_OF_ROW=1000
     restart: on-failure
@@ -121,9 +121,9 @@ services:
       - PYTHONUNBUFFERED=1
       - PYTHONHASHSEED=0
       - JOINER_NUM=1
-      - SENT_ADDER=3
-      - AVG_JOINER=3
-      - POST_DISPATCHERS=3
+      - SENT_ADDER=2
+      - AVG_JOINER=2
+      - POST_DISPATCHERS=2
       - STUDENT_COMM=3
       - NUMBER_OF_ROW=1000
     restart: on-failure
@@ -140,9 +140,9 @@ services:
       - PYTHONUNBUFFERED=1
       - PYTHONHASHSEED=0
       - JOINER_NUM=2
-      - SENT_ADDER=3
-      - AVG_JOINER=3
-      - POST_DISPATCHERS=3
+      - SENT_ADDER=2
+      - AVG_JOINER=2
+      - POST_DISPATCHERS=2
       - STUDENT_COMM=3
       - NUMBER_OF_ROW=1000
     restart: on-failure
@@ -181,21 +181,6 @@ services:
     depends_on:
       - rabbitmq
 
-  sent_adder2:
-    container_name: sent_adder2
-    image: sentiment_adder:latest
-    entrypoint: python3 /sentiment_adder.py
-    environment:
-      - PYTHONUNBUFFERED=1
-      - PYTHONHASHSEED=0
-      - ADDER_NUM=2
-      - JOINERS=3
-    restart: on-failure
-    links:
-      - rabbitmq
-    depends_on:
-      - rabbitmq
-
   post_disp0:
     container_name: post_disp0
     image: post_join_dispatch:latest
@@ -226,21 +211,6 @@ services:
     depends_on:
       - rabbitmq
 
-  post_disp2:
-    container_name: post_disp2
-    image: post_join_dispatch:latest
-    entrypoint: python3 /post_join_dispatch.py
-    environment:
-      - PYTHONUNBUFFERED=1
-      - PYTHONHASHSEED=0
-      - DISPATCH_NUM=2
-      - JOINER=3
-    restart: on-failure
-    links:
-      - rabbitmq
-    depends_on:
-      - rabbitmq
-
   top_sentiment:
     container_name: top_sentiment
     image: top_sentiment:latest
@@ -248,7 +218,7 @@ services:
     environment:
       - PYTHONUNBUFFERED=1
       - PYTHONHASHSEED=0
-      - SENT_ADDERS=3
+      - SENT_ADDERS=2
     restart: on-failure
     links:
       - rabbitmq
@@ -263,7 +233,7 @@ services:
       - PYTHONUNBUFFERED=1
       - PYTHONHASHSEED=0
       - ADDERS=3
-      - AVG_JOINER=3
+      - AVG_JOINER=2
     restart: on-failure
     links:
       - rabbitmq
@@ -293,21 +263,6 @@ services:
       - PYTHONUNBUFFERED=1
       - PYTHONHASHSEED=0
       - JOINER_NUM=1
-      - JOINERS=3
-    restart: on-failure
-    links:
-      - rabbitmq
-    depends_on:
-      - rabbitmq
-
-  join_avg2:
-    container_name: join_avg2
-    image: join_avg:latest
-    entrypoint: python3 /join_avg.py
-    environment:
-      - PYTHONUNBUFFERED=1
-      - PYTHONHASHSEED=0
-      - JOINER_NUM=2
       - JOINERS=3
     restart: on-failure
     links:
