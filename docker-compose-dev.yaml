@@ -1,0 +1,362 @@
+version: '3'
+services:
+  rabbitmq:
+    container_name: rabbitmq
+    image: rabbitmq:latest
+    ports:
+      - 15672:15672
+
+  post_receiver:
+    container_name: post_receiver
+    image: post_receiver:latest
+    entrypoint: python3 /post_receiver.py
+    environment:
+      - PYTHONUNBUFFERED=1
+      - PYTHONHASHSEED=0
+      - ADDERS=3
+      - DISPATCHERS=3
+    restart: on-failure
+    links:
+      - rabbitmq
+    depends_on:
+      - rabbitmq
+
+  comments_receiver:
+    container_name: comments_receiver
+    image: comments_receiver:latest
+    entrypoint: python3 /comments_receiver.py
+    environment:
+      - PYTHONUNBUFFERED=1
+      - PYTHONHASHSEED=0
+      - STUDENT_COMM=3
+    restart: on-failure
+    links:
+      - rabbitmq
+    depends_on:
+      - rabbitmq
+
+  client:
+    container_name: client
+    image: client:latest
+    entrypoint: python3 /client.py
+    environment:
+      - PYTHONUNBUFFERED=1
+      - PYTHONHASHSEED=0
+      - NUMBER_OF_ROW=1000
+      - AVG_JOINER=3
+    volumes:
+      - ./CSV/:/CSV/
+    restart: on-failure
+    links:
+      - rabbitmq
+    depends_on:
+      - rabbitmq
+
+  adder0:
+    container_name: adder0
+    image: adder:latest
+    entrypoint: python3 /adder.py
+    environment:
+      - PYTHONUNBUFFERED=1
+      - PYTHONHASHSEED=0
+      - ADDER_NUM=0
+    restart: on-failure
+    links:
+      - rabbitmq
+    depends_on:
+      - rabbitmq
+
+  adder1:
+    container_name: adder1
+    image: adder:latest
+    entrypoint: python3 /adder.py
+    environment:
+      - PYTHONUNBUFFERED=1
+      - PYTHONHASHSEED=0
+      - ADDER_NUM=1
+    restart: on-failure
+    links:
+      - rabbitmq
+    depends_on:
+      - rabbitmq
+
+  adder2:
+    container_name: adder2
+    image: adder:latest
+    entrypoint: python3 /adder.py
+    environment:
+      - PYTHONUNBUFFERED=1
+      - PYTHONHASHSEED=0
+      - ADDER_NUM=2
+    restart: on-failure
+    links:
+      - rabbitmq
+    depends_on:
+      - rabbitmq
+
+  joiner0:
+    container_name: joiner0
+    image: joiner:latest
+    entrypoint: python3 /joiner.py
+    environment:
+      - PYTHONUNBUFFERED=1
+      - PYTHONHASHSEED=0
+      - JOINER_NUM=0
+      - SENT_ADDER=3
+      - AVG_JOINER=3
+      - POST_DISPATCHERS=3
+      - STUDENT_COMM=3
+      - NUMBER_OF_ROW=1000
+    restart: on-failure
+    links:
+      - rabbitmq
+    depends_on:
+      - rabbitmq
+
+  joiner1:
+    container_name: joiner1
+    image: joiner:latest
+    entrypoint: python3 /joiner.py
+    environment:
+      - PYTHONUNBUFFERED=1
+      - PYTHONHASHSEED=0
+      - JOINER_NUM=1
+      - SENT_ADDER=3
+      - AVG_JOINER=3
+      - POST_DISPATCHERS=3
+      - STUDENT_COMM=3
+      - NUMBER_OF_ROW=1000
+    restart: on-failure
+    links:
+      - rabbitmq
+    depends_on:
+      - rabbitmq
+
+  joiner2:
+    container_name: joiner2
+    image: joiner:latest
+    entrypoint: python3 /joiner.py
+    environment:
+      - PYTHONUNBUFFERED=1
+      - PYTHONHASHSEED=0
+      - JOINER_NUM=2
+      - SENT_ADDER=3
+      - AVG_JOINER=3
+      - POST_DISPATCHERS=3
+      - STUDENT_COMM=3
+      - NUMBER_OF_ROW=1000
+    restart: on-failure
+    links:
+      - rabbitmq
+    depends_on:
+      - rabbitmq
+
+  sent_adder0:
+    container_name: sent_adder0
+    image: sentiment_adder:latest
+    entrypoint: python3 /sentiment_adder.py
+    environment:
+      - PYTHONUNBUFFERED=1
+      - PYTHONHASHSEED=0
+      - ADDER_NUM=0
+      - JOINERS=3
+    restart: on-failure
+    links:
+      - rabbitmq
+    depends_on:
+      - rabbitmq
+
+  sent_adder1:
+    container_name: sent_adder1
+    image: sentiment_adder:latest
+    entrypoint: python3 /sentiment_adder.py
+    environment:
+      - PYTHONUNBUFFERED=1
+      - PYTHONHASHSEED=0
+      - ADDER_NUM=1
+      - JOINERS=3
+    restart: on-failure
+    links:
+      - rabbitmq
+    depends_on:
+      - rabbitmq
+
+  sent_adder2:
+    container_name: sent_adder2
+    image: sentiment_adder:latest
+    entrypoint: python3 /sentiment_adder.py
+    environment:
+      - PYTHONUNBUFFERED=1
+      - PYTHONHASHSEED=0
+      - ADDER_NUM=2
+      - JOINERS=3
+    restart: on-failure
+    links:
+      - rabbitmq
+    depends_on:
+      - rabbitmq
+
+  post_disp0:
+    container_name: post_disp0
+    image: post_join_dispatch:latest
+    entrypoint: python3 /post_join_dispatch.py
+    environment:
+      - PYTHONUNBUFFERED=1
+      - PYTHONHASHSEED=0
+      - DISPATCH_NUM=0
+      - JOINER=3
+    restart: on-failure
+    links:
+      - rabbitmq
+    depends_on:
+      - rabbitmq
+
+  post_disp1:
+    container_name: post_disp1
+    image: post_join_dispatch:latest
+    entrypoint: python3 /post_join_dispatch.py
+    environment:
+      - PYTHONUNBUFFERED=1
+      - PYTHONHASHSEED=0
+      - DISPATCH_NUM=1
+      - JOINER=3
+    restart: on-failure
+    links:
+      - rabbitmq
+    depends_on:
+      - rabbitmq
+
+  post_disp2:
+    container_name: post_disp2
+    image: post_join_dispatch:latest
+    entrypoint: python3 /post_join_dispatch.py
+    environment:
+      - PYTHONUNBUFFERED=1
+      - PYTHONHASHSEED=0
+      - DISPATCH_NUM=2
+      - JOINER=3
+    restart: on-failure
+    links:
+      - rabbitmq
+    depends_on:
+      - rabbitmq
+
+  top_sentiment:
+    container_name: top_sentiment
+    image: top_sentiment:latest
+    entrypoint: python3 /top_sentiment.py
+    environment:
+      - PYTHONUNBUFFERED=1
+      - PYTHONHASHSEED=0
+      - SENT_ADDERS=3
+    restart: on-failure
+    links:
+      - rabbitmq
+    depends_on:
+      - rabbitmq
+
+  avg:
+    container_name: avg
+    image: avg:latest
+    entrypoint: python3 /avg.py
+    environment:
+      - PYTHONUNBUFFERED=1
+      - PYTHONHASHSEED=0
+      - ADDERS=3
+      - AVG_JOINER=3
+    restart: on-failure
+    links:
+      - rabbitmq
+    depends_on:
+      - rabbitmq
+
+  join_avg0:
+    container_name: join_avg0
+    image: join_avg:latest
+    entrypoint: python3 /join_avg.py
+    environment:
+      - PYTHONUNBUFFERED=1
+      - PYTHONHASHSEED=0
+      - JOINER_NUM=0
+      - JOINERS=3
+    restart: on-failure
+    links:
+      - rabbitmq
+    depends_on:
+      - rabbitmq
+
+  join_avg1:
+    container_name: join_avg1
+    image: join_avg:latest
+    entrypoint: python3 /join_avg.py
+    environment:
+      - PYTHONUNBUFFERED=1
+      - PYTHONHASHSEED=0
+      - JOINER_NUM=1
+      - JOINERS=3
+    restart: on-failure
+    links:
+      - rabbitmq
+    depends_on:
+      - rabbitmq
+
+  join_avg2:
+    container_name: join_avg2
+    image: join_avg:latest
+    entrypoint: python3 /join_avg.py
+    environment:
+      - PYTHONUNBUFFERED=1
+      - PYTHONHASHSEED=0
+      - JOINER_NUM=2
+      - JOINERS=3
+    restart: on-failure
+    links:
+      - rabbitmq
+    depends_on:
+      - rabbitmq
+
+  student_comment0:
+    container_name: student_comment0
+    image: student_comment:latest
+    entrypoint: python3 /student_comment.py
+    environment:
+      - PYTHONUNBUFFERED=1
+      - PYTHONHASHSEED=0
+      - INSTANCE_NUM=0
+      - JOINER=3
+    restart: on-failure
+    links:
+      - rabbitmq
+    depends_on:
+      - rabbitmq
+
+  student_comment1:
+    container_name: student_comment1
+    image: student_comment:latest
+    entrypoint: python3 /student_comment.py
+    environment:
+      - PYTHONUNBUFFERED=1
+      - PYTHONHASHSEED=0
+      - INSTANCE_NUM=1
+      - JOINER=3
+    restart: on-failure
+    links:
+      - rabbitmq
+    depends_on:
+      - rabbitmq
+
+  student_comment2:
+    container_name: student_comment2
+    image: student_comment:latest
+    entrypoint: python3 /student_comment.py
+    environment:
+      - PYTHONUNBUFFERED=1
+      - PYTHONHASHSEED=0
+      - INSTANCE_NUM=2
+      - JOINER=3
+    restart: on-failure
+    links:
+      - rabbitmq
+    depends_on:
+      - rabbitmq
+
