@@ -67,12 +67,14 @@ class Joiner:
             avg_shard[i] = []
 
         for comment in comments:
-            sent_key = hash(comment[0]) % SENT_ADDER
-            avg_key = hash(comment[0]) % AVG_JOINER
+            sent_id = comment[0]
+            avg_id = comment[0]
+            sent_key = hash(sent_id) % SENT_ADDER
+            avg_key = hash(avg_id) % AVG_JOINER
 
             if comment[0] in self.dic:
                 sent_shard[sent_key].append([comment[0], comment[2], self.dic[comment[0]]["url"]])
-                if comment[1] == "True":
+                if comment[1] == "T":
                     avg_shard[avg_key].append([self.dic[comment[0]]["url"], self.dic[comment[0]]["score"]])
 
         return sent_shard, avg_shard
@@ -186,8 +188,6 @@ class Joiner:
                             self.publish('avg_join', key, data)
                         self.connection.close()
             elif False not in self.all_posts_received:
-                comments = json.loads(body)
-
                 sent_shard, avg_shard = self.shard_sent_adder(comments)
 
                 for i in range(SENT_ADDER):
@@ -201,7 +201,6 @@ class Joiner:
                         shard = avg_shard[i]
                         key = str(i)
                         self.publish('avg_join', key, shard)
-
             else:
                 self.stored_comments = True
                 comments = json.loads(body)

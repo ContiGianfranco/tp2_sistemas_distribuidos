@@ -65,13 +65,14 @@ class Join:
             data = json.dumps(liked_memes).encode()
             self.publish('result', 'STUD', data)
 
+        file.close()
+
         if False not in self.all_comments_received:
             print("END")
             data = ["END", str(self.consumer_id)]
             body = json.dumps(data).encode()
             self.channel.basic_publish(exchange='result', routing_key='STUD', body=body)
-
-        file.close()
+            self.connection.close()
 
     def publish(self, exchange, key, body):
         sent = False
@@ -102,11 +103,8 @@ class Join:
                 if self.avg > 0:
                     liked_memes = []
                     for comment in comments:
-                        try:
-                            if int(comment[1]) > self.avg and comment[0] != "":
-                                liked_memes.append(comment[0])
-                        except ValueError:
-                            print(comment)
+                        if int(comment[1]) > self.avg and comment[0] != "":
+                            liked_memes.append(comment[0])
                     if len(liked_memes) > 0:
                         data = json.dumps(liked_memes).encode()
                         self.publish('result', 'STUD', data)

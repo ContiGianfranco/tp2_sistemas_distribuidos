@@ -12,9 +12,9 @@ JOINER = int(os.environ["JOINER"])
 def is_from_student(body):
 
     if re.search('university|college|student|teacher|professor', body, re.IGNORECASE):
-        return True
+        return "T"
 
-    return False
+    return "F"
 
 
 class Student:
