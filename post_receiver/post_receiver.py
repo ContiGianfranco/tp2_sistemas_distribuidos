@@ -1,11 +1,11 @@
 #!/usr/bin/env python3
 
 import time
-import pika
-import pika.exceptions
 import json
 import signal
 import os
+
+from common.middleware import Middleware
 
 ADDERS = int(os.environ["ADDERS"])
 DISPATCHERS = int(os.environ["DISPATCHERS"])
@@ -38,49 +38,19 @@ def get_id_and_url(msg):
 
 class Receiver:
     def __init__(self):
-        self.stopping = False
-        connected = False
-        while not connected:
-            try:
-                self.connection = pika.BlockingConnection(
-                    pika.ConnectionParameters(host='rabbitmq'))
-                connected = True
-            except pika.exceptions.AMQPConnectionError:
-                print("Rabbitmq not connected yet")
-                time.sleep(1)
+        self.middleware = Middleware('rabbitmq')
 
-        self.channel = self.connection.channel()
-        self.channel.queue_declare(queue='posts')
-        self.channel.basic_consume(
-            queue='posts', on_message_callback=self.posts_callback, auto_ack=True)
+        post_queue = {
+            'queue': 'posts'
+        }
 
-        self.channel.exchange_declare(exchange='adder_queue', exchange_type='direct')
-        self.channel.confirm_delivery()
+        self.middleware.subscribe(post_queue, self.posts_callback)
 
-        self.channel.exchange_declare(exchange='post_join_dispatch', exchange_type='direct')
-        self.channel.confirm_delivery()
         signal.signal(signal.SIGTERM, self.stop)
 
     def stop(self, sig, frame):
         print("Stopping")
-        self.stopping = True
-
-        self.channel.stop_consuming()
-
-    def publish(self, exchange, key, data):
-        body = json.dumps(data).encode()
-        sent = False
-        while not sent:
-            try:
-                self.channel.basic_publish(
-                    exchange=exchange,
-                    routing_key=key,
-                    body=body,
-                    mandatory=True)
-                sent = True
-            except pika.exceptions.UnroutableError:
-                time.sleep(1)
-                print("Message was returned from exchange {} key {}".format(exchange, key))
+        self.middleware.shutdown()
 
     def posts_callback(self, ch, method, properties, body):
         msg = body.decode()
@@ -88,29 +58,38 @@ class Receiver:
         if msg != "END":
             chunk_id, result = parce_avg(msg)
             key = str(hash(chunk_id) % ADDERS)
-            self.publish('adder_queue', key, result)
+            adder_queue = {
+                    'exchange': 'adder_queue',
+                    'key': key
+                }
+            self.middleware.publish(adder_queue, json.dumps(result).encode())
 
             result = get_id_and_url(msg)
             key = str(hash(chunk_id) % DISPATCHERS)
-            self.publish('post_join_dispatch', key, result)
+            join_dispatch_queue = {
+                'exchange': 'post_join_dispatch',
+                'key': key
+            }
+            self.middleware.publish(join_dispatch_queue, json.dumps(result).encode())
         else:
             for i in range(ADDERS):
-                self.channel.basic_publish(
-                    exchange='adder_queue',
-                    routing_key=str(i),
-                    body="END".encode())
+                adder_queue = {
+                    'exchange': 'adder_queue',
+                    'key': str(i)
+                }
+                self.middleware.publish(adder_queue, "END".encode())
             for i in range(DISPATCHERS):
-                self.channel.basic_publish(
-                    exchange='post_join_dispatch',
-                    routing_key="{}".format(i),
-                    body="END".encode())
-            self.connection.close()
+                join_dispatch_queue = {
+                    'exchange': 'post_join_dispatch',
+                    'key': str(i)
+                }
+                self.middleware.publish(join_dispatch_queue, "END".encode())
+            ch.stop_consuming()
 
     def receive_posts(self):
         print('Waiting for messages. To exit press CTRL+C')
-        self.channel.start_consuming()
-        if self.stopping:
-            self.connection.close()
+        self.middleware.wait_for_messages()
+        self.middleware.close()
 
 
 # Wait for rabbitmq

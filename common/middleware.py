@@ -93,7 +93,7 @@ class Middleware:
         self.channel.start_consuming()
 
     def shutdown(self):
-        self.channel.start_consuming()
+        self.channel.stop_consuming()
 
     def close(self):
         self.connection.close()
