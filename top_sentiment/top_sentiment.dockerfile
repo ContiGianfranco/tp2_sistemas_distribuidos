@@ -4,5 +4,6 @@ RUN apt update && apt install python3 python3-pip -y
 RUN pip3 install pika
 RUN pip3 install requests
 
+COPY common /common/
 COPY top_sentiment /
 ENTRYPOINT ["/bin/sh"]

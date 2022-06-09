@@ -1,9 +1,9 @@
-import pika
-import pika.exceptions
 import time
 import json
 import signal
 import os
+
+from common.middleware import Middleware
 
 STUDENT_COMM = int(os.environ["STUDENT_COMM"])
 
@@ -28,70 +28,42 @@ def filter_columns(msg):
 
 class Receiver:
     def __init__(self):
-        connected = False
-        self.stopping = False
-        while not connected:
-            try:
-                self.connection = pika.BlockingConnection(
-                    pika.ConnectionParameters(host='rabbitmq'))
-                connected = True
-            except pika.exceptions.AMQPConnectionError:
-                print("Rabbitmq not connected yet")
-                time.sleep(1)
-
-        self.channel = self.connection.channel()
-        self.channel.queue_declare(queue='comments')
-        self.channel.basic_consume(
-            queue='comments', on_message_callback=self.callback, auto_ack=True)
-
-        self.channel.exchange_declare(exchange='student_queue', exchange_type='direct')
-        self.channel.confirm_delivery()
+        self.middleware = Middleware('rabbitmq')
+        comments_queue = {
+            'queue': 'comments'
+        }
+        self.middleware.subscribe(comments_queue, self.callback)
         signal.signal(signal.SIGTERM, self.stop)
 
     def stop(self, sig, frame):
         print("Stopping")
-        self.stopping = True
-
-        self.channel.stop_consuming()
-
-    def publish(self, exchange, key, data):
-        body = json.dumps(data).encode()
-        sent = False
-        while not sent:
-            try:
-                self.channel.basic_publish(
-                    exchange=exchange,
-                    routing_key=key,
-                    body=body,
-                    mandatory=True)
-                sent = True
-            except pika.exceptions.UnroutableError:
-                time.sleep(1)
-                print("Message {} was returned from exchange {} key {}".format(body, exchange, key))
+        self.middleware.shutdown()
 
     def callback(self, ch, method, properties, body):
         msg = body.decode()
 
         if msg != "END":
             comments = filter_columns(msg)
-
             comment_id = comments[0][0]
             key = str(hash(comment_id) % STUDENT_COMM)
-
-            self.publish('student_queue', key, comments)
+            queue = {
+                'exchange': 'student_queue',
+                'key': key
+            }
+            self.middleware.publish(queue, json.dumps(comments).encode())
         else:
             for i in range(STUDENT_COMM):
-                self.channel.basic_publish(
-                    exchange='student_queue',
-                    routing_key="{}".format(i),
-                    body="END".encode())
-            self.connection.close()
+                queue = {
+                    'exchange': 'student_queue',
+                    'key': "{}".format(i)
+                }
+                self.middleware.publish(queue, "END".encode())
+            self.middleware.shutdown()
 
     def receive_comments(self):
         print('Waiting for messages.')
-        self.channel.start_consuming()
-        if self.stopping:
-            self.connection.close()
+        self.middleware.wait_for_messages()
+        self.middleware.close()
 
 
 # Wait for rabbitmq

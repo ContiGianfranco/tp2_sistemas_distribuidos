@@ -84,7 +84,7 @@ class Receiver:
                     'key': str(i)
                 }
                 self.middleware.publish(join_dispatch_queue, "END".encode())
-            ch.stop_consuming()
+            self.middleware.shutdown()
 
     def receive_posts(self):
         print('Waiting for messages. To exit press CTRL+C')

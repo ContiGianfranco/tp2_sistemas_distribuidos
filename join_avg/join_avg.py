@@ -1,10 +1,10 @@
 import csv
 import json
-import pika
-import pika.exceptions
 import os
 import time
 import signal
+
+from common.middleware import Middleware
 
 JOINERS = int(os.environ["JOINERS"])
 
@@ -12,8 +12,6 @@ JOINERS = int(os.environ["JOINERS"])
 class Join:
 
     def __init__(self):
-        self.stopping = False
-
         self.consumer_id = os.environ["JOINER_NUM"]
 
         self.stored_comments = False
@@ -21,41 +19,29 @@ class Join:
         self.tmp = []
         self.all_comments_received = [False] * JOINERS
 
-        connected = False
-        while not connected:
-            try:
-                self.connection = pika.BlockingConnection(
-                    pika.ConnectionParameters(host='rabbitmq'))
-                connected = True
-            except pika.exceptions.AMQPConnectionError:
-                print("Rabbitmq not connected yet")
-                time.sleep(1)
+        self.middleware = Middleware('rabbitmq')
 
-        self.channel = self.connection.channel()
-        self.channel.exchange_declare(exchange='avg_join', exchange_type='direct')
+        join_queue = {
+            'exchange': 'avg_join',
+            'keys': ["A{}".format(self.consumer_id), "{}".format(self.consumer_id)]
+        }
 
-        self.result = self.channel.queue_declare(queue='', durable=True)
-        self.queue_name = self.result.method.queue
-
-        self.channel.queue_bind(
-            exchange='avg_join', queue=self.queue_name, routing_key="A{}".format(self.consumer_id))
-        self.channel.queue_bind(
-            exchange='avg_join', queue=self.queue_name, routing_key="{}".format(self.consumer_id))
-
-        self.channel.exchange_declare(exchange='result', exchange_type='direct')
-        self.channel.confirm_delivery()
+        self.middleware.subscribe(join_queue, self.callback)
 
         signal.signal(signal.SIGTERM, self.stop)
 
     def stop(self, sig, frame):
         print("Stopping")
-        self.stopping = True
-
-        self.channel.stop_consuming()
+        self.middleware.shutdown()
 
     def proses_stored_comments(self):
         file = open('tmp.csv')
         csvreader = csv.reader(file)
+
+        result_queue = {
+            'exchange': 'result',
+            'key': 'STUD'
+        }
 
         liked_memes = []
         for comment in csvreader:
@@ -63,7 +49,7 @@ class Join:
                 liked_memes.append(comment[0])
         if len(liked_memes) > 0:
             data = json.dumps(liked_memes).encode()
-            self.publish('result', 'STUD', data)
+            self.middleware.publish(result_queue, data)
 
         file.close()
 
@@ -71,25 +57,16 @@ class Join:
             print("END")
             data = ["END", str(self.consumer_id)]
             body = json.dumps(data).encode()
-            self.channel.basic_publish(exchange='result', routing_key='STUD', body=body)
-            self.connection.close()
-
-    def publish(self, exchange, key, body):
-        sent = False
-        while not sent:
-            try:
-                self.channel.basic_publish(
-                    exchange=exchange,
-                    routing_key=key,
-                    body=body,
-                    mandatory=True)
-                sent = True
-            except pika.exceptions.UnroutableError:
-                time.sleep(1)
-                print("Message {} was returned from exchange {} key {}".format(body, exchange, key))
+            self.middleware.publish(result_queue, body)
+            self.middleware.shutdown()
 
     def callback(self, ch, method, properties, body):
         body = body.decode()
+
+        result_queue = {
+            'exchange': 'result',
+            'key': 'STUD'
+        }
 
         if method.routing_key == "A{}".format(self.consumer_id):
             self.avg = float(json.loads(body))
@@ -107,7 +84,7 @@ class Join:
                             liked_memes.append(comment[0])
                     if len(liked_memes) > 0:
                         data = json.dumps(liked_memes).encode()
-                        self.publish('result', 'STUD', data)
+                        self.middleware.publish(result_queue, data)
                 else:
                     self.stored_comments = True
                     with open('tmp.csv', 'a') as f:
@@ -124,17 +101,13 @@ class Join:
                     print("END")
                     data = ["END", str(self.consumer_id)]
                     body = json.dumps(data).encode()
-                    self.channel.basic_publish(exchange='result', routing_key='STUD', body=body)
-                    self.connection.close()
+                    self.middleware.publish(result_queue, body)
+                    self.middleware.shutdown()
 
     def start_consumer(self):
         print("Waiting for messages.")
-
-        self.channel.basic_consume(
-            queue=self.queue_name, on_message_callback=self.callback, auto_ack=True)
-        self.channel.start_consuming()
-        if self.stopping:
-            self.connection.close()
+        self.middleware.wait_for_messages()
+        self.middleware.close()
 
 
 time.sleep(20)

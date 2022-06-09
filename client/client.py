@@ -148,7 +148,7 @@ class Client:
                     self.all_received[2] = True
 
         if False not in self.all_received:
-            ch.stop_consuming()
+            self.middleware.shutdown()
 
 
 if __name__ == '__main__':

@@ -1,10 +1,10 @@
 import csv
 import json
-import pika
-import pika.exceptions
 import os
 import time
 import signal
+
+from common.middleware import Middleware
 
 SENT_ADDER = int(os.environ["SENT_ADDER"])
 AVG_JOINER = int(os.environ["AVG_JOINER"])
@@ -16,8 +16,6 @@ NUMBER_OF_ROW = int(os.environ["NUMBER_OF_ROW"])
 class Joiner:
 
     def __init__(self):
-        self.stopping = False
-
         self.consumer_id = os.environ["JOINER_NUM"]
 
         self.dic = {}
@@ -25,37 +23,20 @@ class Joiner:
         self.all_comments_received = [False]*STUDENT_COMM
         self.stored_comments = False
 
-        connected = False
-        while not connected:
-            try:
-                self.connection = pika.BlockingConnection(
-                    pika.ConnectionParameters(host='rabbitmq'))
-                connected = True
-            except pika.exceptions.AMQPConnectionError:
-                print("Rabbitmq not connected yet")
-                time.sleep(1)
+        self.middleware = Middleware('rabbitmq')
 
-        self.channel = self.connection.channel()
-        self.channel.exchange_declare(exchange='joiner_queue', exchange_type='direct')
+        joiner_queue = {
+            'exchange': 'joiner_queue',
+            'keys': ["P{}".format(self.consumer_id), "C{}".format(self.consumer_id)]
+        }
 
-        self.result = self.channel.queue_declare(queue='', durable=True)
-        self.queue_name = self.result.method.queue
+        self.middleware.subscribe(joiner_queue, self.callback)
 
-        self.channel.queue_bind(
-            exchange='joiner_queue', queue=self.queue_name, routing_key="P{}".format(self.consumer_id))
-        self.channel.queue_bind(
-            exchange='joiner_queue', queue=self.queue_name, routing_key="C{}".format(self.consumer_id))
-
-        self.channel.exchange_declare(exchange='sentiment_adder_queue', exchange_type='direct')
-        self.channel.exchange_declare(exchange='avg_join', exchange_type='direct')
-        self.channel.confirm_delivery()
         signal.signal(signal.SIGTERM, self.stop)
 
     def stop(self, sig, frame):
         print("Stopping")
-        self.stopping = True
-
-        self.channel.stop_consuming()
+        self.middleware.shutdown()
 
     def shard_sent_adder(self, comments):
         sent_shard = {}
@@ -79,21 +60,6 @@ class Joiner:
 
         return sent_shard, avg_shard
 
-    def publish(self, exchange, key, data):
-        body = json.dumps(data).encode()
-        sent = False
-        while not sent:
-            try:
-                self.channel.basic_publish(
-                    exchange=exchange,
-                    routing_key=key,
-                    body=body,
-                    mandatory=True)
-                sent = True
-            except pika.exceptions.UnroutableError:
-                time.sleep(1)
-                print("Message {} was returned from exchange {} key {}".format(body, exchange, key))
-
     def proses_stored_comments(self):
         file = open('tmp.csv')
         csvreader = csv.reader(file)
@@ -111,13 +77,21 @@ class Joiner:
                     if len(sent_shard[i]) > 0:
                         shard = sent_shard[i]
                         key = str(i)
-                        self.publish('sentiment_adder_queue', key, shard)
+                        sent_queue = {
+                            'exchange': 'sentiment_adder_queue',
+                            'key': key
+                        }
+                        self.middleware.publish(sent_queue, json.dumps(shard).encode())
 
                 for i in range(AVG_JOINER):
                     if len(avg_shard[i]) > 0:
                         shard = avg_shard[i]
                         key = str(i)
-                        self.publish('avg_join', key, shard)
+                        avg_join_queue = {
+                            'exchange': 'avg_join',
+                            'key': key
+                        }
+                        self.middleware.publish(avg_join_queue, json.dumps(shard).encode())
 
                 comments = []
 
@@ -128,13 +102,21 @@ class Joiner:
                 if len(sent_shard[i]) > 0:
                     shard = sent_shard[i]
                     key = str(i)
-                    self.publish('sentiment_adder_queue', key, shard)
+                    sent_queue = {
+                        'exchange': 'sentiment_adder_queue',
+                        'key': key
+                    }
+                    self.middleware.publish(sent_queue, json.dumps(shard).encode())
 
             for i in range(AVG_JOINER):
                 if len(avg_shard[i]) > 0:
                     shard = avg_shard[i]
                     key = str(i)
-                    self.publish('avg_join', key, shard)
+                    avg_join_queue = {
+                        'exchange': 'avg_join',
+                        'key': key
+                    }
+                    self.middleware.publish(avg_join_queue, json.dumps(shard).encode())
 
         file.close()
 
@@ -164,13 +146,20 @@ class Joiner:
                         for i in range(SENT_ADDER):
                             data = ["END", str(self.consumer_id)]
                             key = str(i)
-
-                            self.publish('sentiment_adder_queue', key, data)
+                            sent_queue = {
+                                'exchange': 'sentiment_adder_queue',
+                                'key': key
+                            }
+                            self.middleware.publish(sent_queue, json.dumps(data).encode())
                         for i in range(AVG_JOINER):
                             data = ["END", str(self.consumer_id)]
                             key = str(i)
-                            self.publish('avg_join', key, data)
-                        self.connection.close()
+                            avg_join_queue = {
+                                'exchange': 'avg_join',
+                                'key': key
+                            }
+                            self.middleware.publish(avg_join_queue, json.dumps(data).encode())
+                        self.middleware.shutdown()
         else:
             comments = json.loads(body)
             if comments[0] == "END":
@@ -181,12 +170,20 @@ class Joiner:
                         for i in range(SENT_ADDER):
                             data = ["END", str(self.consumer_id)]
                             key = str(i)
-                            self.publish('sentiment_adder_queue', key, data)
+                            sent_queue = {
+                                'exchange': 'sentiment_adder_queue',
+                                'key': key
+                            }
+                            self.middleware.publish(sent_queue, json.dumps(data).encode())
                         for i in range(AVG_JOINER):
                             data = ["END", str(self.consumer_id)]
                             key = str(i)
-                            self.publish('avg_join', key, data)
-                        self.connection.close()
+                            avg_join_queue = {
+                                'exchange': 'avg_join',
+                                'key': key
+                            }
+                            self.middleware.publish(avg_join_queue, json.dumps(data).encode())
+                        self.middleware.shutdown()
             elif False not in self.all_posts_received:
                 sent_shard, avg_shard = self.shard_sent_adder(comments)
 
@@ -194,13 +191,21 @@ class Joiner:
                     if len(sent_shard[i]) > 0:
                         shard = sent_shard[i]
                         key = str(i)
-                        self.publish('sentiment_adder_queue', key, shard)
+                        sent_queue = {
+                            'exchange': 'sentiment_adder_queue',
+                            'key': key
+                        }
+                        self.middleware.publish(sent_queue, json.dumps(shard).encode())
 
                 for i in range(AVG_JOINER):
                     if len(avg_shard[i]) > 0:
                         shard = avg_shard[i]
                         key = str(i)
-                        self.publish('avg_join', key, shard)
+                        avg_join_queue = {
+                            'exchange': 'avg_join',
+                            'key': key
+                        }
+                        self.middleware.publish(avg_join_queue, json.dumps(shard).encode())
             else:
                 self.stored_comments = True
                 comments = json.loads(body)
@@ -213,13 +218,8 @@ class Joiner:
 
     def start_consumer(self):
         print("Waiting for messages.")
-
-        self.channel.basic_consume(
-            queue=self.queue_name, on_message_callback=self.callback, auto_ack=True)
-        self.channel.start_consuming()
-        if self.stopping:
-            self.connection.close()
-
+        self.middleware.wait_for_messages()
+        self.middleware.close()
 
 
 # Wait for rabbitmq to come up

@@ -1,48 +1,33 @@
 #!/usr/bin/env python3
 import json
-import pika
-import pika.exceptions
 import time
 import os
 import signal
+
+from common.middleware import Middleware
 
 
 class Adder:
 
     def __init__(self):
-        self.stopping = False
         self.consumer_id = os.environ["ADDER_NUM"]
 
         self.score_sum = 0
         self.counter = 0
 
-        connected = False
-        while not connected:
-            try:
-                self.connection = pika.BlockingConnection(
-                    pika.ConnectionParameters(host='rabbitmq'))
-                connected = True
-            except pika.exceptions.AMQPConnectionError:
-                print("Rabbitmq not connected yet")
-                time.sleep(1)
+        self.middleware = Middleware('rabbitmq')
 
-        self.channel = self.connection.channel()
-        self.channel.exchange_declare(exchange='adder_queue', exchange_type='direct')
+        adder_queue = {
+            'exchange': 'adder_queue',
+            'keys': [str(self.consumer_id)]
+        }
 
-        self.result = self.channel.queue_declare(queue='', durable=True)
-        self.queue_name = self.result.method.queue
-
-        self.channel.queue_bind(
-            exchange='adder_queue', queue=self.queue_name, routing_key=str(self.consumer_id))
-
-        self.channel.queue_declare(queue='avg')
+        self.middleware.subscribe(adder_queue, self.callback)
         signal.signal(signal.SIGTERM, self.stop)
 
     def stop(self, sig, frame):
         print("Stopping")
-        self.stopping = True
-
-        self.channel.stop_consuming()
+        self.middleware.shutdown()
 
     def callback(self, ch, method, properties, body):
         body = body.decode()
@@ -56,18 +41,18 @@ class Adder:
             print("END: [{}, {}, {}]".format(self.consumer_id, self.counter, self.score_sum))
             data = [self.consumer_id, self.counter, self.score_sum]
 
-            self.channel.basic_publish(exchange='', routing_key='avg', body=json.dumps(data).encode())
-            self.connection.close()
+            avg_queue = {
+                'queue': 'avg'
+            }
+
+            self.middleware.publish(avg_queue, json.dumps(data).encode())
+            self.middleware.shutdown()
 
     def start_consumer(self):
-        print('Waiting for messages. To exit press CTRL+C'.format(self.consumer_id))
+        print('Waiting for messages.'.format(self.consumer_id))
 
-        self.channel.basic_consume(
-            queue=self.queue_name, on_message_callback=self.callback, auto_ack=True)
-
-        self.channel.start_consuming()
-        if self.stopping:
-            self.connection.close()
+        self.middleware.wait_for_messages()
+        self.middleware.close()
 
 
 # Wait for rabbitmq to come up

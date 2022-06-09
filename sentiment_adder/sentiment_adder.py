@@ -1,9 +1,9 @@
 import json
-import pika
-import pika.exceptions
 import os
 import time
 import signal
+
+from common.middleware import Middleware
 
 JOINERS = int(os.environ["JOINERS"])
 
@@ -11,41 +11,25 @@ JOINERS = int(os.environ["JOINERS"])
 class Adder:
 
     def __init__(self):
-        self.stopping = False
-
         self.consumer_id = os.environ["ADDER_NUM"]
-
-        connected = False
-        while not connected:
-            try:
-                self.connection = pika.BlockingConnection(
-                    pika.ConnectionParameters(host='rabbitmq'))
-                connected = True
-            except pika.exceptions.AMQPConnectionError:
-                print("Rabbitmq not connected yet")
-                time.sleep(1)
 
         self.dic = {}
         self.ended_list = [False for i in range(JOINERS)]
 
-        self.channel = self.connection.channel()
-        self.channel.exchange_declare(exchange='sentiment_adder_queue', exchange_type='direct')
+        self.middleware = Middleware('rabbitmq')
 
-        self.result = self.channel.queue_declare(queue='', durable=True)
-        self.queue_name = self.result.method.queue
+        sentiment_queue = {
+            'exchange': 'sentiment_adder_queue',
+            'keys': ["{}".format(self.consumer_id)]
+        }
 
-        self.channel.queue_bind(
-            exchange='sentiment_adder_queue', queue=self.queue_name, routing_key="{}".format(self.consumer_id))
-
-        self.channel.queue_declare(queue='sentiment_avg')
+        self.middleware.subscribe(sentiment_queue, self.callback)
 
         signal.signal(signal.SIGTERM, self.stop)
 
     def stop(self, sig, frame):
         print("Stopping")
-        self.stopping = True
-
-        self.channel.stop_consuming()
+        self.middleware.shutdown()
 
     def get_avgs(self):
         result = []
@@ -83,19 +67,17 @@ class Adder:
                 print("END")
                 avgs = self.get_avgs()
                 data = json.dumps(avgs).encode()
-                self.channel.basic_publish(exchange='', routing_key='sentiment_avg', body=data)
+                sent_queue = {
+                    'queue': 'sentiment_avg'
+                }
+                self.middleware.publish(sent_queue, data)
 
-                self.connection.close()
+                self.middleware.shutdown()
 
     def start_consumer(self):
         print('Waiting for messages.')
-
-        self.channel.basic_consume(
-            queue=self.queue_name, on_message_callback=self.callback, auto_ack=True)
-
-        self.channel.start_consuming()
-        if self.stopping:
-            self.connection.close()
+        self.middleware.wait_for_messages()
+        self.middleware.close()
 
 
 # Wait for rabbitmq to come up
