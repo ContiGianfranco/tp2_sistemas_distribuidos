@@ -16,6 +16,7 @@ NUMBER_OF_ROW = int(os.environ["NUMBER_OF_ROW"])
 class Joiner:
 
     def __init__(self):
+        self.tmp_file = open('tmp.csv', 'a')
         self.consumer_id = os.environ["JOINER_NUM"]
 
         self.dic = {}
@@ -36,6 +37,7 @@ class Joiner:
 
     def stop(self, sig, frame):
         print("Stopping")
+        self.tmp_file.close()
         self.middleware.shutdown()
 
     def shard_sent_adder(self, comments):
@@ -61,16 +63,41 @@ class Joiner:
         return sent_shard, avg_shard
 
     def proses_stored_comments(self):
-        file = open('tmp.csv')
-        csvreader = csv.reader(file)
+        with open('tmp.csv') as file:
+            csvreader = csv.reader(file)
 
-        comments = []
+            comments = []
 
-        for comment in csvreader:
-            comments.append(comment)
+            for comment in csvreader:
+                comments.append(comment)
 
-            if len(comments) >= NUMBER_OF_ROW:
+                if len(comments) >= NUMBER_OF_ROW:
 
+                    sent_shard, avg_shard = self.shard_sent_adder(comments)
+
+                    for i in range(SENT_ADDER):
+                        if len(sent_shard[i]) > 0:
+                            shard = sent_shard[i]
+                            key = str(i)
+                            sent_queue = {
+                                'exchange': 'sentiment_adder_queue',
+                                'key': key
+                            }
+                            self.middleware.publish(sent_queue, json.dumps(shard).encode())
+
+                    for i in range(AVG_JOINER):
+                        if len(avg_shard[i]) > 0:
+                            shard = avg_shard[i]
+                            key = str(i)
+                            avg_join_queue = {
+                                'exchange': 'avg_join',
+                                'key': key
+                            }
+                            self.middleware.publish(avg_join_queue, json.dumps(shard).encode())
+
+                    comments = []
+
+            if len(comments) > 0:
                 sent_shard, avg_shard = self.shard_sent_adder(comments)
 
                 for i in range(SENT_ADDER):
@@ -93,33 +120,6 @@ class Joiner:
                         }
                         self.middleware.publish(avg_join_queue, json.dumps(shard).encode())
 
-                comments = []
-
-        if len(comments) > 0:
-            sent_shard, avg_shard = self.shard_sent_adder(comments)
-
-            for i in range(SENT_ADDER):
-                if len(sent_shard[i]) > 0:
-                    shard = sent_shard[i]
-                    key = str(i)
-                    sent_queue = {
-                        'exchange': 'sentiment_adder_queue',
-                        'key': key
-                    }
-                    self.middleware.publish(sent_queue, json.dumps(shard).encode())
-
-            for i in range(AVG_JOINER):
-                if len(avg_shard[i]) > 0:
-                    shard = avg_shard[i]
-                    key = str(i)
-                    avg_join_queue = {
-                        'exchange': 'avg_join',
-                        'key': key
-                    }
-                    self.middleware.publish(avg_join_queue, json.dumps(shard).encode())
-
-        file.close()
-
     def callback(self, ch, method, properties, body):
         body = body.decode()
 
@@ -140,6 +140,7 @@ class Joiner:
                 if False not in self.all_posts_received:
                     print("RECEIVED ALL POSTS: {}".format(len(self.dic.keys())))
                     if self.stored_comments:
+                        self.tmp_file.close()
                         self.proses_stored_comments()
                         self.stored_comments = False
                     if False not in self.all_comments_received:
@@ -209,12 +210,8 @@ class Joiner:
             else:
                 self.stored_comments = True
                 comments = json.loads(body)
-                with open('tmp.csv', 'a') as f:
-
-                    write = csv.writer(f)
-                    write.writerows(comments)
-
-                    f.close()
+                write = csv.writer(self.tmp_file)
+                write.writerows(comments)
 
     def start_consumer(self):
         print("Waiting for messages.")

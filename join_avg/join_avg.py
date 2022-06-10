@@ -12,6 +12,7 @@ JOINERS = int(os.environ["JOINERS"])
 class Join:
 
     def __init__(self):
+        self.tmp_file = open('tmp.csv', 'a')
         self.consumer_id = os.environ["JOINER_NUM"]
 
         self.stored_comments = False
@@ -32,26 +33,25 @@ class Join:
 
     def stop(self, sig, frame):
         print("Stopping")
+        self.tmp_file.close()
         self.middleware.shutdown()
 
     def proses_stored_comments(self):
-        file = open('tmp.csv')
-        csvreader = csv.reader(file)
+        with open('tmp.csv') as file:
+            csvreader = csv.reader(file)
 
-        result_queue = {
-            'exchange': 'result',
-            'key': 'STUD'
-        }
+            result_queue = {
+                'exchange': 'result',
+                'key': 'STUD'
+            }
 
-        liked_memes = []
-        for comment in csvreader:
-            if int(comment[1]) > self.avg and comment[0] != "":
-                liked_memes.append(comment[0])
-        if len(liked_memes) > 0:
-            data = json.dumps(liked_memes).encode()
-            self.middleware.publish(result_queue, data)
-
-        file.close()
+            liked_memes = []
+            for comment in csvreader:
+                if int(comment[1]) > self.avg and comment[0] != "":
+                    liked_memes.append(comment[0])
+            if len(liked_memes) > 0:
+                data = json.dumps(liked_memes).encode()
+                self.middleware.publish(result_queue, data)
 
         if False not in self.all_comments_received:
             print("END")
@@ -72,6 +72,7 @@ class Join:
             self.avg = float(json.loads(body))
 
             if self.stored_comments:
+                self.tmp_file.close()
                 self.proses_stored_comments()
                 self.stored_comments = False
         else:
@@ -87,10 +88,8 @@ class Join:
                         self.middleware.publish(result_queue, data)
                 else:
                     self.stored_comments = True
-                    with open('tmp.csv', 'a') as f:
-                        write = csv.writer(f)
-                        write.writerows(comments)
-                        f.close()
+                    write = csv.writer(self.tmp_file)
+                    write.writerows(comments)
             else:
                 producer_id = int(comments[1])
                 self.all_comments_received[producer_id] = True

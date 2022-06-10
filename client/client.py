@@ -41,12 +41,21 @@ class Client:
             self.middleware.shutdown()
 
     def send_posts(self, file_path):
-        file = open(file_path)
-        csvreader = csv.reader(file)
+        with open(file_path) as file:
 
-        post_queue = {
-            'queue': 'posts'
-        }
+            post_queue = {
+                'queue': 'posts'
+            }
+
+            self.send_rows(file, post_queue)
+
+        if self.stopping:
+            exit(0)
+
+        print("END_OF_POSTS")
+
+    def send_rows(self, file, queue):
+        csvreader = csv.reader(file)
 
         header = []
         header = next(csvreader)
@@ -58,54 +67,29 @@ class Client:
 
             if len(rows) >= NUMBER_OF_ROW:
                 data = json.dumps(rows).encode()
-                self.middleware.publish(post_queue, data)
+                self.middleware.publish(queue, data)
                 rows = []
                 if self.stopping:
                     self.middleware.close()
-                    file.close()
-                    exit(0)
+                    return
 
         if len(rows) > 0:
             data = json.dumps(rows).encode()
-            self.middleware.publish(post_queue, data)
+            self.middleware.publish(queue, data)
 
-        self.middleware.publish(post_queue, "END".encode())
-        print("END_OF_POSTS")
-        file.close()
+        self.middleware.publish(queue, "END".encode())
 
     def send_comments(self, file_path):
-        file = open(file_path)
-        csvreader = csv.reader(file)
+        with open(file_path) as file:
 
-        comments_queue = {
-            'queue': 'comments'
-        }
+            comments_queue = {
+                'queue': 'comments'
+            }
 
-        header = []
-        header = next(csvreader)
+            self.send_rows(file, comments_queue)
 
-        rows = []
-
-        for row in csvreader:
-            rows.append(row)
-
-            if len(rows) >= NUMBER_OF_ROW:
-                data = json.dumps(rows).encode()
-                self.middleware.publish(comments_queue, data)
-                rows = []
-                if self.stopping:
-                    self.middleware.close()
-                    file.close()
-                    exit(0)
-
-        if len(rows) > 0:
-            data = json.dumps(rows).encode()
-            self.middleware.publish(comments_queue, data)
-
-        self.middleware.publish(comments_queue, "END".encode())
-        print("END_OF_COMMENTS")
-
-        file.close()
+        if self.stopping:
+            exit(0)
 
         self.consuming = True
 
@@ -123,7 +107,6 @@ class Client:
 
                 with open(file_path, 'wb') as file:
                     file.write(body)
-                    file.close()
 
                 print("Received max average sentiment image")
                 self.all_received[1] = True
@@ -138,7 +121,6 @@ class Client:
                     for url in urls:
                         f.write(url)
                         f.write("\n")
-                    f.close()
             else:
                 producer_id = int(urls[1])
                 self.all_student_memes[producer_id] = True
